@@ -1,0 +1,91 @@
+Overview:
+13011397 perfect barcode matches
+
+Basecalling frequencies:
+Reference base: T
+  Called as A: 0.21%
+  Called as C: 0.47%
+  Called as G: 0.32%
+  Called as T: 99.00%
+  Accuracy (called as T): 99.00%
+
+Reference base: A
+  Called as A: 98.51%
+  Called as C: 0.58%
+  Called as G: 0.72%
+  Called as T: 0.20%
+  Accuracy (called as A): 98.51%
+
+Reference base: G
+  Called as A: 0.58%
+  Called as C: 0.44%
+  Called as G: 98.70%
+  Called as T: 0.28%
+  Accuracy (called as G): 98.70%
+
+Reference base: C
+  Called as A: 0.59%
+  Called as C: 98.22%
+  Called as G: 0.57%
+  Called as T: 0.62%
+  Accuracy (called as C): 98.22%
+
+Reference base: U
+  Called as A: 1.38%
+  Called as C: 8.13%
+  Called as G: 4.27%
+  Called as T: 86.23%
+  Accuracy (called as U): 0.00%
+
+Example tables to show if you want to:
+Oligo: NTICN_fwd
+Position    Ref_Base    Counts
+1     N     A:112371, C:68496, G:97863, T:116396
+2     N     A:110083, C:64916, G:104634, T:115493
+3     N     A:119988, C:59112, G:113280, T:102746
+4     T     A:1142, C:4977, G:2315, T:386692
+5     I     A:5683, C:61337, G:324144, T:3962
+6     C     A:4576, C:380352, G:1821, T:8377
+7     N     A:90277, C:68912, G:116471, T:119466
+8     N     A:99971, C:58477, G:121612, T:115066
+9     N     A:93409, C:71249, G:116438, T:114030
+10    N     A:101271, C:73405, G:104405, T:116045
+11    A     A:389886, C:1524, G:1556, T:2160
+12    T     A:1887, C:1132, G:444, T:391663
+13    C     A:2922, C:369262, G:20958, T:1984
+14    A     A:388525, C:2310, G:4066, T:225
+15    G     A:1590, C:179, G:390916, T:2441
+16    T     A:520, C:1247, G:1107, T:392252
+17    C     A:3172, C:388041, G:1955, T:1958
+18    N     A:98850, C:63754, G:121209, T:111313
+19    T     A:494, C:387, G:150, T:394095
+20    A     A:392886, C:673, G:173, T:1394
+21    C     A:554, C:392713, G:114, T:1745
+22    N     A:89836, C:66759, G:128746, T:109785
+
+Oligo: NAUCN_fwd
+Position    Ref_Base    Counts
+1     N     A:35589, C:27398, G:69790, T:61271
+2     N     A:41818, C:36216, G:52522, T:63492
+3     N     A:43201, C:44292, G:38691, T:67864
+4     A     A:188447, C:1322, G:3234, T:1045
+5     U     A:3535, C:1473, G:3106, T:185934
+6     C     A:2695, C:160967, G:22214, T:8172
+7     N     A:46961, C:33054, G:56823, T:57210
+8     N     A:47249, C:34641, G:49799, T:62359
+9     N     A:49677, C:34754, G:49399, T:60218
+10    N     A:50926, C:28891, G:54484, T:59747
+11    T     A:348, C:677, G:1245, T:191778
+12    G     A:240, C:693, G:191976, T:1139
+13    G     A:489, C:736, G:192716, T:107
+14    C     A:781, C:191908, G:1031, T:328
+15    A     A:191822, C:1061, G:459, T:706
+16    T     A:1212, C:468, G:153, T:192215
+17    C     A:710, C:190418, G:1434, T:1486
+18    N     A:47300, C:37327, G:52073, T:57348
+19    A     A:191934, C:753, G:1001, T:360
+20    C     A:684, C:193111, G:131, T:122
+21    C     A:486, C:193171, G:146, T:245
+22    N     A:47560, C:33248, G:56184, T:57056
+
+-Kevin
