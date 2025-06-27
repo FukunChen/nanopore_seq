@@ -10,18 +10,10 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 import logging
 
-#log setting
-logging.basicConfig(
-    filename="alignment_debug.log",   
-    filemode='a',                   
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    level=logging.INFO      
-)
-
 #input setting
-sub_matrix = parasail.Matrix(r"D:\nanopore\scrips\alignment\didu_matrix_withIU.txt")
+sub_matrix = parasail.Matrix(r"D:\nanopore\scripts\alignment\didu_matrix_withIU.txt")
 #sub_matrix = parasail.Matrix(r"D:\nanopore\scrips\alignment\didu_matrix.txt")
-fastq_folder = rf"D:\nanopore\data\basecalling\pass" 
+fastq_folder = rf"D:\nanopore\data\pod5\nanopore\basecalling\pass" 
 fasta_folder = rf"D:\nanopore\data\fasta\idealDNA.fasta"
 #fasta_folder = rf"D:\nanopore\data\fasta\idealDNA_rep7to16.fasta"
 output_folder = rf"D:\nanopore\data\aligned_reference"
@@ -55,58 +47,19 @@ def read_from_fasta(input_file):
 def sanitize_filename(name):
     return re.sub(r'[\\/*?:"<>|= @]', '_', name)
 
-#compute alignment score for fwd
-def compute_partial_score(ref_aln,query_aln):
-    #score without penalty
-    ref_range_1=(0, 6)
-    ref_range_2=(17, 35)
-    #ref_aln = result.traceback.ref
-    #query_aln = result.traceback.query
-    
-    score = 0
-    ref_pos=0
-    start_align = 0
-    query_pos=0
-
-    for r, q in zip(ref_aln, query_aln):
-        if r == '-' or q == '-':
-            if r != '-':
-                start_align = 1
-                ref_pos += 1
-            if q != '-':
-                query_pos += 1
-            continue
-
-        if (ref_range_1[0] <= ref_pos <= ref_range_1[1]) or (ref_range_2[0] <= ref_pos <= ref_range_2[1]):
-            try:
-                #translate character to index
-                alphabet = list("ATGCUINX")
-                alpha_idx = {char: i for i, char in enumerate(alphabet)}
-                i = alpha_idx[r]
-                j = alpha_idx[q]
-                
-                s = sub_matrix.matrix[i][j]
-            except KeyError:
-                s = 0
-            score += s
-
-        ref_pos += 1
-        query_pos += 1
-
-
-    return score
-
 #alignment for one read
 def align_and_mask_with_output(read, oligos, read_id):
-    max_iter=20 # 46*10 = 460, 2*10 in order to cover all the base pair
-    min_remaining=15  #why 15???
+    max_iter = (len(read) // 46) + 2 # 
+    min_remaining=4  #why 15???
     original_read = list(read)
     read = list(read)
     mask = [False] * len(read)
     results = []
     aligned_seq = ['-'] * len(read)
     iteration = 0
-    selected_oligos = oligos 
+    selected_oligos = oligos
+    header_matched = False
+    tail_matched = False 
         
     for iteration in range(max_iter):
         current_read = ''.join([read[i] if not mask[i] else 'X' for i in range(len(read))])
@@ -121,11 +74,18 @@ def align_and_mask_with_output(read, oligos, read_id):
         #divide oligos
         fwd_oligos = [o for o in oligos if o.description.endswith("fwd")]
         rev_oligos = [o for o in oligos if o.description.endswith("rev")]
+        
+        #if header or tail is detected, remove them in the oligos
+        selected_oligos = [
+        o for o in oligos
+        if not (header_matched and o.description == "header")
+        and not (tail_matched and o.description == "tail")
+        ]
 
         for oligo in selected_oligos:        
             in_oligo = str(oligo.seq)
             #print(f"oligo seq: {in_oligo}")
-            result = parasail.sg_qx_trace_striped_8(current_read, in_oligo, 5, 2, sub_matrix)
+            result = parasail.sg_qx_trace_striped_16(current_read, in_oligo, 10, 5, sub_matrix)
             ref = result.ref
             query = result.query
             #current_score = compute_partial_score(ref,query) 
@@ -144,7 +104,6 @@ def align_and_mask_with_output(read, oligos, read_id):
                     break
                     
             #check count results
-            #print(f"the score of {oligo} is {current_score}")
             
             if current_score > best_score:
                 best_score = current_score
@@ -155,6 +114,13 @@ def align_and_mask_with_output(read, oligos, read_id):
             return None, []
         if best_score <= 0:
             break
+        
+        #check header
+        if best_oligo is not None:
+            if best_oligo.description == "header":
+                header_matched = True
+            elif best_oligo.description == "tail":
+                tail_matched = True
         #select continue oligos
         if iteration == 0 and best_oligo is not None:
             if best_oligo.description.endswith("fwd"):
@@ -172,7 +138,10 @@ def align_and_mask_with_output(read, oligos, read_id):
 
         for q_char, r_char in zip(query_aln, ref_aln):
             if q_char != '-':
-                if r_char != '-' and q_char.upper() == original_read[read_pos].upper():
+                if r_char != '-' and r_char != 'N':
+                    mask_indices.append(read_pos)
+                    aligned_seq[read_pos] = r_char
+                elif r_char == 'N':
                     mask_indices.append(read_pos)
                     aligned_seq[read_pos] = q_char
                 read_pos += 1  # only advance when not a gap in query
@@ -190,6 +159,8 @@ def align_and_mask_with_output(read, oligos, read_id):
             "oligo id":str(best_oligo.id),
             "oligo": str(best_oligo.seq),
             "score": best_result.score,
+            "query_aln": query_aln,
+            "ref_aln": ref_aln
         })
         
         #in each iteration, update final_reference
@@ -223,6 +194,8 @@ def main():
         fasta_records = []
 
         for query, header in zip(querys, headers):
+            if len(query) > 400:
+                continue
             final_record, results = align_and_mask_with_output(query, oligos, header)
             if final_record is None:
                 continue
