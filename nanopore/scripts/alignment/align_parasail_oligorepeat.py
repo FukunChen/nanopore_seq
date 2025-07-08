@@ -321,7 +321,7 @@ if __name__ == "__main__":
     
     #parser.add_argument("--matrix", type=str, required=True, help="Path to substitution matrix file (.txt)")
     parser.add_argument("--fastq_folder", type=str, required=True, help="Path to folder containing FASTQ files")
-    parser.add_argument("--fasta_file", type=str, required=True, help="Path to reference FASTA file")
+    parser.add_argument("--fasta_file", type=str, required=True, help="Path to reference oligos reference FASTA file")
     parser.add_argument("--output_folder", type=str, required=True, help="Folder to store output alignments")
 
     args = parser.parse_args()
