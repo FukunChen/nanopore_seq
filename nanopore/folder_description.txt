@@ -6,7 +6,6 @@ nanopore/
 │
 ├── scripts/
 │   ├── alignment/
-│   │   └── align_parasail/    # Alignment pipeline that compares each read to all oligos and selects the highest-scoring reference
+│   │   └── align_parasail_oligorepeat.py/    # Alignment pipeline that compares each read to all oligos and selects the highest-scoring reference
 │   │
-│   └── read_files/            # Utility scripts for reading oligo references, basecalling results, and related data
-├── results_of_barcode_matching.txt  #Use barcode to find the matching results of U/I
+│   └── process_dataset/            # Utility scripts for bed files.

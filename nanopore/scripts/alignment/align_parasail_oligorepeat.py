@@ -10,20 +10,13 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 import logging
 import math
+import argparse
 import matplotlib.pyplot as plt
 from parasail_function import (GAP_OPEN_PENALTY,
                                GAP_EXTEND_PENALTY,
                                LOCAL_ALIGN_FUNCTION,
                                MATRIX
                                )
-
-#input setting
-sub_matrix = parasail.Matrix(r"D:\nanopore\scripts\alignment\didu_matrix_withIU.txt")
-#sub_matrix = parasail.Matrix(r"D:\nanopore\scrips\alignment\didu_matrix.txt")
-fastq_folder = rf"D:\nanopore\data\pod5\nanopore\basecalling\pass" 
-fasta_folder = rf"D:\nanopore\data\fasta\idealDNA_new.fasta"
-#fasta_folder = rf"D:\nanopore\data\fasta\idealDNA_rep7to16.fasta"
-output_folder = rf"D:\nanopore\data\aligned_reference"
 
 #read files
 def read_from_fastq(fastq_path):
@@ -169,7 +162,7 @@ def find_oligo(read, oligos):
         # matched_part = np.where(np.isin(list(comp),['|'])) [0]
         # current_score = matched_part.shape[0]
         #print(f"current score: {current_score}")
-        if current_score > best_score and mr == 1:
+        if current_score > best_score and mr == 1:  ### only when the oligo entirely matched with the read, it can be identified as the Best Oligo
             best_score = current_score
             best_oligo = original_oligo
             best_result = result
@@ -181,7 +174,12 @@ def find_oligo(read, oligos):
     return best_oligo
 
 
-def main():
+def main(args):
+    ### set input
+    fastq_folder = args.fastq_folder
+    fasta_folder = args.fasta_file
+    output_folder = args.output_folder
+    
     oligos = []
     querys = []
     headers = []
@@ -190,8 +188,8 @@ def main():
     #if there is header or tail in the read or not
     header_yn = 0
     tail_yn = 0
-    header_adapter = ['TTTTTTTTCCTGTACTTCGTTCAGTTACGTATTGCT']
-    tail_adapter = ['GCAATACGTAACTGAACGAAGTACAGG']
+    header_adapter = ['TTTTTTTTCCTGTACTTCGTTCAGTTACGTATTGCTT']  ##end repire add T at 5'
+    tail_adapter = ['GCAATACGTAACTGAACGAAGTACAGGA'] ## end repire add A at 3'
     ref_len = 0
     
     #check match rate for all of the files
@@ -303,20 +301,28 @@ def main():
         with open(shared_json_path, "w") as jf:
              json.dump(json_results, jf, indent=4)
              
-    if match_ratios:
-        sorted_ratios = np.sort(match_ratios)
-        cdf = np.arange(1, len(sorted_ratios)+1) / len(sorted_ratios)
+    # if match_ratios:
+    #     sorted_ratios = np.sort(match_ratios)
+    #     cdf = np.arange(1, len(sorted_ratios)+1) / len(sorted_ratios)
 
-        plt.figure(figsize=(8, 6))
-        plt.plot(sorted_ratios, cdf, marker='.', linestyle='-')
-        plt.xlabel("Match Ratio")
-        plt.ylabel("CDF")
-        plt.title("CDF of Match Ratio")
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
-    else:
-        print("No match ratios to plot.") 
+    #     plt.figure(figsize=(8, 6))
+    #     plt.plot(sorted_ratios, cdf, marker='.', linestyle='-')
+    #     plt.xlabel("Match Ratio")
+    #     plt.ylabel("CDF")
+    #     plt.title("CDF of Match Ratio")
+    #     plt.grid(True)
+    #     plt.tight_layout()
+    #     plt.show()
+    # else:
+    #     print("No match ratios to plot.") 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run alignment using parasail and custom matrix")
+    
+    #parser.add_argument("--matrix", type=str, required=True, help="Path to substitution matrix file (.txt)")
+    parser.add_argument("--fastq_folder", type=str, required=True, help="Path to folder containing FASTQ files")
+    parser.add_argument("--fasta_file", type=str, required=True, help="Path to reference FASTA file")
+    parser.add_argument("--output_folder", type=str, required=True, help="Folder to store output alignments")
+
+    args = parser.parse_args()
+    main(args)
