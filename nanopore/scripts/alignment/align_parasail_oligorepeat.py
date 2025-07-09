@@ -1,17 +1,15 @@
-import parasail
 import numpy as np
-import csv
 import json
 from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 import os
 import gzip
 import re
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
-import logging
 import math
 import argparse
 import matplotlib.pyplot as plt
+import concurrent.futures
 from parasail_function import (GAP_OPEN_PENALTY,
                                GAP_EXTEND_PENALTY,
                                LOCAL_ALIGN_FUNCTION,
@@ -173,6 +171,103 @@ def find_oligo(read, oligos):
 
     return best_oligo
 
+def process_fastq_file(filename, fastq_folder, oligos, output_folder):
+    if not filename.endswith(".fastq.gz"):
+        return
+
+    safe_name = sanitize_filename(filename.replace(".fastq.gz", ""))
+    shared_fasta_path = os.path.join(output_folder, f"{safe_name}.fasta")
+    shared_json_path = os.path.join(output_folder, f"{safe_name}.json")
+
+    # Skip if output file already exists
+    if os.path.exists(shared_fasta_path):
+        print(f"Skipping {filename} (output already exists)")
+        return
+    
+    fastq_path = os.path.join(fastq_folder, filename)
+    querys, headers = read_from_fastq(fastq_path)
+    
+    header_adapter = ['TTTTTTTTCCTGTACTTCGTTCAGTTACGTATTGCTT']  ##end repire add T at 5'
+    tail_adapter = ['GCAATACGTAACTGAACGAAGTACAGGA'] ## end repire add A at 3'
+    
+    total_reads = 0
+    matched_reads = 0
+    all_results = []
+    json_results = []
+
+    for query, header in zip(querys, headers):
+        #initial
+        ref_len = 0
+        total_reads = total_reads + 1
+        #Filter out reads that are too long
+        if len(query) > 500:
+            continue
+        header_yn, tail_yn = find_adapter(header_adapter, tail_adapter, query)
+        best_oligo = find_oligo(query, oligos)
+        if best_oligo is None:
+            continue
+        
+        if header_yn == 1 or tail_yn == 1:
+            ref = ''
+            if header_yn == 1:
+                ref += header_adapter[0]
+                ref_len = len(ref)
+            if tail_yn == 1:
+                ref_len = len(ref) + 27 - 10
+            
+            oligo_len = len(best_oligo.seq)
+            needed_len = len(query) - ref_len + 10
+            repeat_times = math.ceil(needed_len / oligo_len)   
+            ref += str(best_oligo.seq) * repeat_times
+            
+            ref = ref[:-10] #cut the hang-out part
+            if tail_yn == 1:
+                ref += tail_adapter[0]
+
+        # without adapter
+        else:
+            repeat_times = math.ceil(len(query) / len(best_oligo.seq))
+            ref = str(best_oligo.seq) * repeat_times
+
+        result = LOCAL_ALIGN_FUNCTION(query, ref, GAP_OPEN_PENALTY, GAP_EXTEND_PENALTY, MATRIX)
+        tb = result.traceback
+        q_aln = tb.query
+        r_aln = tb.ref
+        comp = tb.comp
+
+        arr = np.array([list(q_aln), list(comp), list(r_aln)])
+        match_r = find_match_ratio(arr)
+        matched_reads += 1
+
+        json_results.append({
+            "read_id": header,
+            "query_aln": q_aln,
+            "comp": comp,
+            "ref_aln": r_aln
+        })
+
+        corrected_ref = list(r_aln)
+        for i in range(len(corrected_ref)):
+            if corrected_ref[i] == 'N' and q_aln[i] != '-':
+                corrected_ref[i] = q_aln[i]
+        corrected_ref_str = ''.join(corrected_ref).replace('-', '')
+
+        fasta_record = SeqRecord(
+            Seq(corrected_ref_str),
+            id=f"{sanitize_filename(header)}",
+            description=""
+        )
+        all_results.append(fasta_record)
+
+    print(f" {filename}: {matched_reads}/{total_reads} matched")
+
+    # Save output
+    with open(shared_fasta_path, "w") as fasta_out:
+        SeqIO.write(all_results, fasta_out, "fasta")
+    with open(shared_json_path, "w") as jf:
+        json.dump(json_results, jf, indent=4)
+
+
 
 def main(args):
     ### set input
@@ -184,122 +279,128 @@ def main(args):
     querys = []
     headers = []
     oligos = read_from_fasta(fasta_folder)
+
+    fastq_files = [f for f in os.listdir(fastq_folder) if f.endswith(".fastq.gz")]
+
+    with concurrent.futures.ProcessPoolExecutor(max_workers=4) as executor:
+        futures = [
+            executor.submit(process_fastq_file, f, fastq_folder, oligos, output_folder)
+            for f in fastq_files
+        ]
+        for f in concurrent.futures.as_completed(futures):
+            try:
+                f.result()
+            except Exception as e:
+                print(f"❌ Error: {e}")
     
-    #if there is header or tail in the read or not
-    header_yn = 0
-    tail_yn = 0
-    header_adapter = ['TTTTTTTTCCTGTACTTCGTTCAGTTACGTATTGCTT']  ##end repire add T at 5'
-    tail_adapter = ['GCAATACGTAACTGAACGAAGTACAGGA'] ## end repire add A at 3'
-    ref_len = 0
+    # #if there is header or tail in the read or not
+    # header_yn = 0
+    # tail_yn = 0
+    # header_adapter = ['TTTTTTTTCCTGTACTTCGTTCAGTTACGTATTGCTT']  ##end repire add T at 5'
+    # tail_adapter = ['GCAATACGTAACTGAACGAAGTACAGGA'] ## end repire add A at 3'
+    # ref_len = 0
     
-    #check match rate for all of the files
-    match_ratios = []
+    # #check match rate for all of the files
+    # match_ratios = []
     
-    #process only one read in one loop
-    for filename in os.listdir(fastq_folder):
-        #parameter for summary
-        total_reads = 0
-        matched_reads = 0
-        reads_mr_eight = 0
-        reads_mr_seven = 0
-        if filename.endswith(".fastq.gz"):
-            fastq_path = os.path.join(fastq_folder, filename)
-        querys,headers = read_from_fastq(fastq_path)
+    # #process only one read in one loop
+    # for filename in os.listdir(fastq_folder):
+    #     #parameter for summary
+    #     total_reads = 0
+    #     matched_reads = 0
+    #     if filename.endswith(".fastq.gz"):
+    #         fastq_path = os.path.join(fastq_folder, filename)
+    #     querys,headers = read_from_fastq(fastq_path)
         
-        all_results = []
-        fasta_records = []
-        json_results = []
+    #     all_results = []
+    #     fasta_records = []
+    #     json_results = []
 
-        for query, header in zip(querys, headers):
-            #initial
-            ref_len = 0
-            total_reads = total_reads + 1
-            #Filter out reads that are too long
-            if len(query) > 500:
-                continue
-            header_yn, tail_yn = find_adapter(header_adapter, tail_adapter, query)
-            best_oligo = find_oligo(query, oligos)
-            if best_oligo is None:
-                continue
+    #     for query, header in zip(querys, headers):
+    #         #initial
+    #         ref_len = 0
+    #         total_reads = total_reads + 1
+    #         #Filter out reads that are too long
+    #         if len(query) > 500:
+    #             continue
+    #         header_yn, tail_yn = find_adapter(header_adapter, tail_adapter, query)
+    #         best_oligo = find_oligo(query, oligos)
+    #         if best_oligo is None:
+    #             continue
             
-            if header_yn == 1 or tail_yn == 1:
-                ref = ''
-                if header_yn == 1:
-                    ref += header_adapter[0]
-                    ref_len = len(ref)
-                if tail_yn == 1:
-                    ref_len = len(ref) + 27 - 10
+    #         if header_yn == 1 or tail_yn == 1:
+    #             ref = ''
+    #             if header_yn == 1:
+    #                 ref += header_adapter[0]
+    #                 ref_len = len(ref)
+    #             if tail_yn == 1:
+    #                 ref_len = len(ref) + 27 - 10
                 
-                oligo_len = len(best_oligo.seq)
-                needed_len = len(query) - ref_len + 10
-                repeat_times = math.ceil(needed_len / oligo_len)   
-                ref += str(best_oligo.seq) * repeat_times
+    #             oligo_len = len(best_oligo.seq)
+    #             needed_len = len(query) - ref_len + 10
+    #             repeat_times = math.ceil(needed_len / oligo_len)   
+    #             ref += str(best_oligo.seq) * repeat_times
                 
-                ref = ref[:-10] #cut the hang-out part
-                if tail_yn == 1:
-                    ref += tail_adapter[0]
+    #             ref = ref[:-10] #cut the hang-out part
+    #             if tail_yn == 1:
+    #                 ref += tail_adapter[0]
 
-            # without adapter
-            else:
-                repeat_times = math.ceil(len(query) / len(best_oligo.seq))
-                ref = str(best_oligo.seq) * repeat_times
-            # if len(ref) > len(query):
-            #     print('ref is longer than query')
+    #         # without adapter
+    #         else:
+    #             repeat_times = math.ceil(len(query) / len(best_oligo.seq))
+    #             ref = str(best_oligo.seq) * repeat_times
+    #         # if len(ref) > len(query):
+    #         #     print('ref is longer than query')
             
-            result = LOCAL_ALIGN_FUNCTION(query, ref, GAP_OPEN_PENALTY, GAP_EXTEND_PENALTY, MATRIX)
-            tb = result.traceback
-            q_aln = tb.query
-            r_aln = tb.ref
-            comp = tb.comp
+    #         result = LOCAL_ALIGN_FUNCTION(query, ref, GAP_OPEN_PENALTY, GAP_EXTEND_PENALTY, MATRIX)
+    #         tb = result.traceback
+    #         q_aln = tb.query
+    #         r_aln = tb.ref
+    #         comp = tb.comp
 
-            arr = np.array([list(q_aln), list(comp), list(r_aln)])
+    #         arr = np.array([list(q_aln), list(comp), list(r_aln)])
             
-            #check match rate
-            match_r = find_match_ratio(arr)
-            match_ratios.append(match_r)
-            matched_reads = matched_reads + 1
+    #         #check match rate
+    #         match_r = find_match_ratio(arr)
+    #         match_ratios.append(match_r)
+    #         matched_reads = matched_reads + 1
 
-            #print matched results
-            # print("\nAlignment Result:")
-            # print("Query : ", q_aln)
-            # print("Comp  : ", comp)
-            # print("Ref   : ", r_aln)
             
-            #save reference: json and fasta
-            json_results.append({
-                        "read_id": header,
-                        "query_aln": q_aln,
-                        "comp": comp,
-                        "ref_aln": r_aln
-                    })
-            corrected_ref = list(r_aln)
-            for i in range(len(corrected_ref)):
-                if corrected_ref[i] == 'N' and q_aln[i] != '-':
-                    corrected_ref[i] = q_aln[i]
-            corrected_ref_str = ''.join(corrected_ref)
-            fasta_records = SeqRecord(
-                Seq(corrected_ref_str),
-                id=f"{sanitize_filename(header)}",
-                description=""
-            )
-            all_results.append(fasta_records)
+    #         #save reference: json and fasta
+    #         json_results.append({
+    #                     "read_id": header,
+    #                     "query_aln": q_aln,
+    #                     "comp": comp,
+    #                     "ref_aln": r_aln
+    #                 })
+    #         corrected_ref = list(r_aln)
+    #         for i in range(len(corrected_ref)):
+    #             if corrected_ref[i] == 'N' and q_aln[i] != '-':
+    #                 corrected_ref[i] = q_aln[i]
+    #         corrected_ref_str = ''.join(corrected_ref)
+    #         fasta_records = SeqRecord(
+    #             Seq(corrected_ref_str),
+    #             id=f"{sanitize_filename(header)}",
+    #             description=""
+    #         )
+    #         all_results.append(fasta_records)
 
                     
 
-        print(f'--------------------For {filename} ----------------------') 
-        print(f'Total reads (per fastq) is: {total_reads}')
-        print(f'Matched_reads with best oligos: {matched_reads}')
+    #     print(f'--------------------For {filename} ----------------------') 
+    #     print(f'Total reads (per fastq) is: {total_reads}')
+    #     print(f'Matched_reads with best oligos: {matched_reads}')
 
-        # output results
-        safe_name = sanitize_filename(filename.replace(".fastq.gz", ""))
-        shared_fasta_path = os.path.join(output_folder, f"{safe_name}.fasta")
-        shared_json_path = os.path.join(output_folder, f"{safe_name}.json")
+    #     # output results
+    #     safe_name = sanitize_filename(filename.replace(".fastq.gz", ""))
+    #     shared_fasta_path = os.path.join(output_folder, f"{safe_name}.fasta")
+    #     shared_json_path = os.path.join(output_folder, f"{safe_name}.json")
 
-        with open(shared_fasta_path, "w") as fasta_out:
-            SeqIO.write(all_results, fasta_out, "fasta")
+    #     with open(shared_fasta_path, "w") as fasta_out:
+    #         SeqIO.write(all_results, fasta_out, "fasta")
 
-        with open(shared_json_path, "w") as jf:
-             json.dump(json_results, jf, indent=4)
+    #     with open(shared_json_path, "w") as jf:
+    #          json.dump(json_results, jf, indent=4)
              
 
 if __name__ == "__main__":
