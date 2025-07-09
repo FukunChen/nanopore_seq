@@ -301,20 +301,6 @@ def main(args):
         with open(shared_json_path, "w") as jf:
              json.dump(json_results, jf, indent=4)
              
-    # if match_ratios:
-    #     sorted_ratios = np.sort(match_ratios)
-    #     cdf = np.arange(1, len(sorted_ratios)+1) / len(sorted_ratios)
-
-    #     plt.figure(figsize=(8, 6))
-    #     plt.plot(sorted_ratios, cdf, marker='.', linestyle='-')
-    #     plt.xlabel("Match Ratio")
-    #     plt.ylabel("CDF")
-    #     plt.title("CDF of Match Ratio")
-    #     plt.grid(True)
-    #     plt.tight_layout()
-    #     plt.show()
-    # else:
-    #     print("No match ratios to plot.") 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run alignment using parasail and custom matrix")
