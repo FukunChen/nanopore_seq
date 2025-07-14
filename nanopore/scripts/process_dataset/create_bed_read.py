@@ -21,7 +21,7 @@ def reconstruct_alignment(read, ref_seq):
     for (cigar_type, length) in read.cigartuples:
         if cigar_type == 0:  # match / mismatch (M)
             # Both sides advance 1
-            aligned_ref.extend(ref_seq[ref_pos : ref_pos + length])
+            aligned_ref.extend(ref_seq[ref_pos : ref_pos + length]) ##crop the ref to suit the length of read
             aligned_read.extend(read.query_sequence[read_pos : read_pos + length])
             ref_pos += length
             read_pos += length
@@ -85,11 +85,11 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
 
         aligned_ref, aligned_read = reconstruct_alignment(aln, ref_seq)
 
-        ref_idx = aln.reference_start
+        ref_idx = 0
         ref_idx_list = []  # Store the aligned sequence index corresponding to the genome coordinate
 
         for base in aligned_ref:
-                ref_idx_list.append(ref_idx) #
+                ref_idx_list.append(ref_idx) # from the beginning of reference
                 ref_idx += 1
                 
         for i, base in enumerate(aligned_ref):
@@ -108,22 +108,22 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
             #print(f"DNA damage is: {context_ref} and it's basecalled as : {context_read} and its position is: {i_u} ")
             
             # Find the position after the 15th reference base
-            ref_count = 0
-            j = i
-            while j < len(aligned_ref) and ref_count < 15:
-                if aligned_ref[j] != '-':
-                    ref_count += 1
-                j += 1 
+            # ref_count = 0
+            # j = i
+            # while j < len(aligned_ref) and ref_count < 15:
+            #     if aligned_ref[j] != '-':
+            #         ref_count += 1
+            #     j += 1 
 
-            if ref_count == 15 and j < len(aligned_ref):
-                x = sum(1 for b in aligned_read[0:j+1] if b != '-')
-                x_pos_start = x
-                x_pos_end = x + 1
-                x_context = aligned_ref[j]
+            # if ref_count == 15 and j < len(aligned_ref):
+            #     x = sum(1 for b in aligned_read[0:j+1] if b != '-')
+            #     x_pos_start = x
+            #     x_pos_end = x + 1
+            #     x_context = aligned_ref[j]
                 #print(f"control base for {context_ref} is : {x_context} and its position is : {x}")
-                if x_pos_end or x_pos_start  >= len(aln.query_sequence):
-                    x_pos_start = None
-                    x_pos_end = None
+                # if x_pos_end or x_pos_start  >= len(aln.query_sequence):
+                #     x_pos_start = None
+                #     x_pos_end = None
                     
                     
             # aligned_ref_str = ''.join(aligned_ref)
@@ -136,8 +136,8 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
             if pos_start is not None and pos_end is not None:
                 bed_lines.append(f"{ref_name}\t{pos_start}\t{pos_end}\t{base}")
             
-            if x_pos_start is not None and x_pos_end is not None:
-                bed_lines.append(f"{ref_name}\t{x_pos_start}\t{x_pos_end}\t{base}")
+            # if x_pos_start is not None and x_pos_end is not None:
+            #     bed_lines.append(f"{ref_name}\t{x_pos_start}\t{x_pos_end}\t{base}")
 
             # 保存详细信息到 JSON
             entry = {
@@ -145,8 +145,8 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
                 f"{base}_context": context_ref,
                 f"{base}_context__read": context_read,
                 f"{base}_pos": [pos_start, pos_end],
-                f"{base}_X_context": x_context,
-                f"{base}_X_pos": [x_pos_start, x_pos_end]
+                # f"{base}_X_context": x_context,
+                # f"{base}_X_pos": [x_pos_start, x_pos_end]
             }
             # if context_ref == "I":
             #     print(f"Saving to coverage_dict[{ref_name}:{ref_idx_list[i]+1}]:")

@@ -47,26 +47,7 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
             pos_end = min(len(ref_seq)-1, i + 1)
             context_ref  = base
             #print(f"DNA damage is: {context_ref} and it's basecalled as : and its position is: {pos_end} ")
-            
-            # Find the position after the 15th reference base
-            # ref_count = 0
-            # j = i
-            # while j < len(ref_seq) and ref_count < 15:
-            #     ref_count += 1
-            #     j += 1 
-
-            # if ref_count == 15 and j < len(ref_seq):
-            #     x_pos_start = max(0, j)
-            #     x_pos_end = min(len(ref_seq)-1, j + 1)
-            #     x_context = ref_seq[j]
-            #     #print(f"control base for {context_ref} is : {x_context} and its position is : {x_pos_end}")
-            #     #breakpoint()
-            #     if x_pos_end is None or x_pos_start is None:
-            #         print(f"xpos is non")
-            #         breakpoint()
-            #         continue
-                
-
+        
             if pos_start is not None and pos_end is not None:
                 bed_lines.append(f"{ref_name}\t{pos_start}\t{pos_end+1}")
             
@@ -77,17 +58,9 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
             entry = {
                 "read_id": read_id,
                 f"{base}_context": context_ref,
-                #f"{base}_context__read": context_read,
                 f"{base}_pos": [pos_start, pos_end],
-                # f"{base}_X_context": x_context,
-                # f"{base}_X_pos": [x_pos_start, x_pos_end]
             }
-            # if context_ref == "I":
-            #     print(f"Saving to coverage_dict[{ref_name}:{ref_idx_list[i]+1}]:")
-            #     for k, v in entry.items():
-            #         print(f"  {k}: {v}")
-                
-            #breakpoint()
+
             coverage_dict[f"{ref_name}:{ref_idx_list[i]+1}"].append(entry)
             
         found_reads += 1

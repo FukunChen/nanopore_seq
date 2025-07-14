@@ -19,11 +19,12 @@ def main():
     output_u_npz = "calls_u.npz"
     output_i_npz = "calls_i.npz"
 
-    # === 打开 BAM 读取器，收集 read_id 对应的损伤类型（U/I） ===
     bam_fh = pysam.AlignmentFile(bam_path, "rb")
     read_damage_type = defaultdict(set)
+    bed_read_ids = set()
 
-    print("读取 BED 中的损伤信息...")
+    print("Read DNA damage message from bed file...")
+    read_damage_positions = defaultdict(list)
     with open(bed_path) as f_bed:
         for line in f_bed:
             if line.startswith("#") or line.strip() == "":
@@ -35,16 +36,17 @@ def main():
             ctg, start, end, damage_type = fields[0], int(fields[1]), int(fields[2]), fields[3]
             if damage_type not in {"U", "I"}:
                 continue
+            read_damage_positions[ctg].append((start, end, damage_type))
+            bed_read_ids.add(ctg) 
 
-            for read in bam_fh.fetch(ctg, start, end):
+            for read in bam_fh:
                 if not read.is_secondary and not read.is_supplementary:
                     read_damage_type[read.query_name].add(damage_type)
 
     bam_fh.close()
 
-    print(f"总计检测到 {len(read_damage_type)} 个包含 U/I 的 reads。")
+    print(f"Detect {len(read_damage_type)} reads have U/I damage")
 
-    # === 重新打开 BAM 和 POD5，准备提取数据 ===
     bam_fh = pysam.AlignmentFile(bam_path, "rb")
     pod5_reader = pod5.Reader(pod5_path)
 
@@ -52,17 +54,11 @@ def main():
     data_i = {"signal": [], "seq": [], "label": [], "move": []}
     processed = set()
 
-    print("正在提取 BAM 中对应的 primary reads...")
-    for read in tqdm(bam_fh.fetch(until_eof=True), desc="提取中"):
+    print("Extract reads from BAM file...")
+    for read in tqdm(bam_fh.fetch(until_eof=True), desc="extract"):
         read_id = read.query_name
 
-        if read_id in processed:
-            continue
-        if read_id not in read_damage_type:
-            continue
-        if read.is_secondary or read.is_supplementary:
-            continue
-        if read.query_sequence is None:
+        if read_id not in bed_read_ids:
             continue
 
         try:
@@ -78,15 +74,23 @@ def main():
         sequence = read.query_sequence
         signal = pod5_read.signal
 
-        if "U" in read_damage_type[read_id]:
-            label_u = [1 if base == "U" else 0 for base in sequence]
+        label_u = [0] * len(sequence)
+        label_i = [0] * len(sequence)
+        for start, end, dtype in read_damage_positions.get(read_id, []):
+            if dtype == "U":
+                for i in range(start, max(start + 1, min(end, len(sequence)))):
+                    label_u[i] = 1
+            elif dtype == "I":
+                for i in range(start, max(start + 1, min(end, len(sequence)))):
+                    label_i[i] = 1
+
+        if any(label_u):
             data_u["seq"].append(list(sequence))
             data_u["signal"].append(signal)
             data_u["label"].append(label_u)
             data_u["move"].append(move_table)
 
-        if "I" in read_damage_type[read_id]:
-            label_i = [1 if base == "I" else 0 for base in sequence]
+        if any(label_i):
             data_i["seq"].append(list(sequence))
             data_i["signal"].append(signal)
             data_i["label"].append(label_i)
@@ -94,8 +98,7 @@ def main():
 
         processed.add(read_id)
 
-    # === 保存为 .npz 文件 ===
-    print("正在保存 npz 文件...")
+    print("Saving npz files...")
 
     np.savez(output_u_npz,
             signal=np.array(data_u["signal"], dtype=object),
@@ -109,9 +112,9 @@ def main():
             label=np.array(data_i["label"], dtype=object),
             move=np.array(data_i["move"], dtype=object))
 
-    print(f"✅ calls_u.npz: 包含 {len(data_u['seq'])} 条 U read")
-    print(f"✅ calls_i.npz: 包含 {len(data_i['seq'])} 条 I read")
-    print("🎉 全部完成！")
+    print(f" calls_u.npz: {len(data_u['seq'])} U reads")
+    print(f" calls_i.npz: {len(data_i['seq'])} I reads")
+    print("All finished!")
 
 if __name__ == "__main__":
     main()
