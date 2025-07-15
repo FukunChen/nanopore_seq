@@ -5,6 +5,11 @@ import json
 from collections import defaultdict
 import argparse
 
+read_seq_dict = {}
+with open("read_sequences_from_fastq.fasta") as f_fasta:
+    for record in SeqIO.parse(f_fasta, "fasta"):
+        read_seq_dict[record.id] = str(record.seq)
+        print("Get read from fastq")
 
 def reconstruct_alignment(read, ref_seq):
     aligned_ref = []
@@ -21,7 +26,7 @@ def reconstruct_alignment(read, ref_seq):
     for (cigar_type, length) in read.cigartuples:
         if cigar_type == 0:  # match / mismatch (M)
             # Both sides advance 1
-            aligned_ref.extend(ref_seq[ref_pos : ref_pos + length]) ##crop the ref to suit the length of read
+            aligned_ref.extend(ref_seq[ref_pos : ref_pos + length])
             aligned_read.extend(read.query_sequence[read_pos : read_pos + length])
             ref_pos += length
             read_pos += length
@@ -69,12 +74,20 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
     for aln in bam.fetch(until_eof=True):
         aligned_ref = []
         aligned_read = []
-        
-        if aln.is_unmapped or aln.query_sequence is None:
+
+        if aln.is_secondary or aln.is_supplementary or aln.is_unmapped:
             continue
 
-        if aln.is_secondary or aln.is_supplementary:
-            continue
+        if aln.query_sequence is None:
+            print("find sequence in fastq")
+            read_id = aln.query_name
+            sequence = read_seq_dict.get(read_id)
+            if sequence is None:
+                continue
+            else:
+                aln.query_sequence = sequence 
+        else:
+            sequence = aln.query_sequence
         
         read_id = aln.query_name
         ref_name = aln.reference_name
@@ -85,17 +98,18 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
 
         aligned_ref, aligned_read = reconstruct_alignment(aln, ref_seq)
 
-        ref_idx = 0
+        ref_idx = aln.reference_start
         ref_idx_list = []  # Store the aligned sequence index corresponding to the genome coordinate
 
         for base in aligned_ref:
-                ref_idx_list.append(ref_idx) # from the beginning of reference
+                ref_idx_list.append(ref_idx) #
                 ref_idx += 1
                 
         for i, base in enumerate(aligned_ref):
             if base not in ['U', 'I']:
                 continue
             
+            print("find I/U processing...")
             i_u = sum(1 for b in aligned_read[0:i+1] if b != '-') ##Convert the position information in reference to the position information in read
             if i_u >= len(aln.query_sequence):
                 continue
@@ -120,10 +134,10 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
             #     x_pos_start = x
             #     x_pos_end = x + 1
             #     x_context = aligned_ref[j]
-                #print(f"control base for {context_ref} is : {x_context} and its position is : {x}")
-                # if x_pos_end or x_pos_start  >= len(aln.query_sequence):
-                #     x_pos_start = None
-                #     x_pos_end = None
+            #     #print(f"control base for {context_ref} is : {x_context} and its position is : {x}")
+            #     if x_pos_end or x_pos_start  >= len(aln.query_sequence):
+            #         x_pos_start = None
+            #         x_pos_end = None
                     
                     
             # aligned_ref_str = ''.join(aligned_ref)
@@ -131,15 +145,13 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
 
             # print(f"Aligned ref:  {aligned_ref_str}")
             # print(f"Aligned read: {aligned_read_str}")
-            
-            # 写 BED 行
+
             if pos_start is not None and pos_end is not None:
                 bed_lines.append(f"{ref_name}\t{pos_start}\t{pos_end}\t{base}")
             
             # if x_pos_start is not None and x_pos_end is not None:
             #     bed_lines.append(f"{ref_name}\t{x_pos_start}\t{x_pos_end}\t{base}")
 
-            # 保存详细信息到 JSON
             entry = {
                 "read_id": read_id,
                 f"{base}_context": context_ref,
@@ -155,11 +167,10 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
                 
                 #breakpoint()
             coverage_dict[f"{ref_name}:{ref_idx_list[i]+1}"].append(entry)
-        found_reads += 1
+            found_reads += 1
 
     bam.close()
 
-    # 输出 JSON 和 BED 文件
     output_json = os.path.join(output_dir, filename + ".json")
     output_bed = os.path.join(output_dir, filename + ".bed")
 

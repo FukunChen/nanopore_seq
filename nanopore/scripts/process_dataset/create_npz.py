@@ -4,7 +4,12 @@ import numpy as np
 from tqdm import tqdm
 from collections import defaultdict
 import argparse
+from Bio import SeqIO
 
+read_seq_dict = {}
+with open("read_sequences_from_fastq.fasta") as f_fasta:
+    for record in SeqIO.parse(f_fasta, "fasta"):
+        read_seq_dict[record.id] = str(record.seq)
 
 def main():
     parser = argparse.ArgumentParser(description="Extract U/I reads from BAM and save as NPZ.")
@@ -22,6 +27,7 @@ def main():
     bam_fh = pysam.AlignmentFile(bam_path, "rb")
     read_damage_type = defaultdict(set)
     bed_read_ids = set()
+    bed_reads = 0
 
     print("Read DNA damage message from bed file...")
     read_damage_positions = defaultdict(list)
@@ -38,14 +44,15 @@ def main():
                 continue
             read_damage_positions[ctg].append((start, end, damage_type))
             bed_read_ids.add(ctg) 
+            bed_reads += 1
 
-            for read in bam_fh:
-                if not read.is_secondary and not read.is_supplementary:
-                    read_damage_type[read.query_name].add(damage_type)
+            # for ctg in bam_fh:
+            #     #if not read.is_unmapped and not read.is_secondary and not read.is_supplementary:
+            #     read_damage_type[ctg].add(damage_type)
 
     bam_fh.close()
 
-    print(f"Detect {len(read_damage_type)} reads have U/I damage")
+    print(f"Find {bed_reads} reads have U/I damage")
 
     bam_fh = pysam.AlignmentFile(bam_path, "rb")
     pod5_reader = pod5.Reader(pod5_path)
@@ -55,7 +62,7 @@ def main():
     processed = set()
 
     print("Extract reads from BAM file...")
-    for read in tqdm(bam_fh.fetch(until_eof=True), desc="extract"):
+    for read in bam_fh.fetch(until_eof=True):
         read_id = read.query_name
 
         if read_id not in bed_read_ids:
@@ -64,24 +71,36 @@ def main():
         try:
             pod5_read = next(pod5_reader.reads(selection=[read_id]))
         except RuntimeError:
+            print("pod5 error")
             continue
 
         try:
             move_table = read.get_tag("mv")
         except KeyError:
+            print("No move table")
             continue
 
-        sequence = read.query_sequence
+        if read.query_sequence is None:
+            print("find seq in fastq")
+            read_id = read.query_name
+            sequence = read_seq_dict.get(read_id)
+            if sequence is None:
+                continue
+            else:
+                read.query_sequence = sequence 
+        else:
+            sequence = read.query_sequence
+        #sequence = read.query_sequence
         signal = pod5_read.signal
 
         label_u = [0] * len(sequence)
         label_i = [0] * len(sequence)
         for start, end, dtype in read_damage_positions.get(read_id, []):
             if dtype == "U":
-                for i in range(start, max(start + 1, min(end, len(sequence)))):
+                for i in range(start, min(max(start + 1, end), len(sequence))):
                     label_u[i] = 1
             elif dtype == "I":
-                for i in range(start, max(start + 1, min(end, len(sequence)))):
+                for i in range(start, min(max(start + 1, end), len(sequence))):
                     label_i[i] = 1
 
         if any(label_u):
