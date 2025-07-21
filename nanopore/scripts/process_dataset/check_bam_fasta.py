@@ -4,7 +4,7 @@ import sys
 
 def count_mapped_read(bampath):
     bamfile = pysam.AlignmentFile(bam_path, "rb")
-    count = sum(1 for read in bamfile.fetch(until_eof=True) if not read.is_unmapped and not read.is_secondary and not read.is_supplementary )
+    count = sum(1 for read in bamfile.fetch(until_eof=True))
     bamfile.close()
     return count
 
@@ -34,8 +34,8 @@ if __name__ == "__main__":
     mapped_count = count_mapped_read(bam_path)
     print(f"Mapped reads in BAM file are {mapped_count} / mapped prima")
 
-    # print(f"\nChecking FASTA file...")
-    # total, u_count, i_count = count_U_I_reads(fasta_path)
-    # print(f"Total reads in fasta {total}")
-    # print(f"Total read of U {u_count}")
-    # print(f"Total reads of I {i_count}")
+    print(f"\nChecking FASTA file...")
+    total, u_count, i_count = count_U_I_reads(fasta_path)
+    print(f"Total reads in fasta {total}")
+    print(f"Total read of U {u_count}")
+    print(f"Total reads of I {i_count}")

@@ -6,10 +6,10 @@ from collections import defaultdict
 import argparse
 from Bio import SeqIO
 
-read_seq_dict = {}
-with open("read_sequences_from_fastq.fasta") as f_fasta:
-    for record in SeqIO.parse(f_fasta, "fasta"):
-        read_seq_dict[record.id] = str(record.seq)
+# read_seq_dict = {}
+# with open("read_sequences_from_fastq.fasta") as f_fasta:
+#     for record in SeqIO.parse(f_fasta, "fasta"):
+#         read_seq_dict[record.id] = str(record.seq)
 
 def main():
     parser = argparse.ArgumentParser(description="Extract U/I reads from BAM and save as NPZ.")
@@ -64,14 +64,14 @@ def main():
     print("Extract reads from BAM file...")
     for read in bam_fh.fetch(until_eof=True):
         read_id = read.query_name
-
+        read_id = read_id.strip()
         if read_id not in bed_read_ids:
             continue
 
         try:
             pod5_read = next(pod5_reader.reads(selection=[read_id]))
         except RuntimeError:
-            print("pod5 error")
+            print(f"Missing in pod5: {read_id}")
             continue
 
         try:
@@ -81,13 +81,13 @@ def main():
             continue
 
         if read.query_sequence is None:
-            print("find seq in fastq")
-            read_id = read.query_name
-            sequence = read_seq_dict.get(read_id)
-            if sequence is None:
+            # print("find seq in fastq")
+            # read_id = read.query_name
+            # sequence = read_seq_dict.get(read_id)
+            # if sequence is None:
                 continue
-            else:
-                read.query_sequence = sequence 
+            # else:
+            #     read.query_sequence = sequence 
         else:
             sequence = read.query_sequence
         #sequence = read.query_sequence

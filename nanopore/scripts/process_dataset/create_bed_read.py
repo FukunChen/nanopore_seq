@@ -9,9 +9,9 @@ read_seq_dict = {}
 with open("read_sequences_from_fastq.fasta") as f_fasta:
     for record in SeqIO.parse(f_fasta, "fasta"):
         read_seq_dict[record.id] = str(record.seq)
-        print("Get read from fastq")
+        #print("Get read from fastq")
 
-def reconstruct_alignment(read, ref_seq):
+def reconstruct_alignment(read, ref_seq, output_path="alignment.json"):
     aligned_ref = []
     aligned_read = []
 
@@ -54,14 +54,9 @@ def reconstruct_alignment(read, ref_seq):
         else:
             print(f"Unhandled CIGAR type: {cigar_type}")
 
-    # aligned_ref_str = ''.join(aligned_ref)
-    # aligned_read_str = ''.join(aligned_read)
-
-    # print(f"Aligned ref:  {aligned_ref_str}")
-    # print(f"Aligned read: {aligned_read_str}")
-    # breakpoint()
-
     return aligned_ref, aligned_read
+
+
 
 def create_bed(ref_fa_path, bam_path, output_dir, filename):
     bam = pysam.AlignmentFile(bam_path, "rb")
@@ -70,27 +65,32 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
     coverage_dict = defaultdict(list)
     bed_lines = []
     found_reads = 0
+    no_reference = 0
 
     for aln in bam.fetch(until_eof=True):
         aligned_ref = []
         aligned_read = []
 
         if aln.is_secondary or aln.is_supplementary or aln.is_unmapped:
-            continue
+        #if aln.is_unmapped:
+              continue
 
         if aln.query_sequence is None:
-            print("find sequence in fastq")
+            #print("find sequence in fastq")
             read_id = aln.query_name
             sequence = read_seq_dict.get(read_id)
             if sequence is None:
                 continue
             else:
                 aln.query_sequence = sequence 
+            #continue
         else:
             sequence = aln.query_sequence
         
         read_id = aln.query_name
         ref_name = aln.reference_name
+        if ref_name is None:
+            no_reference += 1
         ref_seq = ref_dict.get(ref_name)
         if ref_seq is None:
             continue
@@ -109,13 +109,13 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
             if base not in ['U', 'I']:
                 continue
             
-            print("find I/U processing...")
+            #print("find I/U processing...")
             i_u = sum(1 for b in aligned_read[0:i+1] if b != '-') ##Convert the position information in reference to the position information in read
-            if i_u >= len(aln.query_sequence):
+            if i_u >= len(sequence):
                 continue
             pos_start = i_u
             pos_end = i_u + 1
-            if pos_end >= len(aln.query_sequence):
+            if pos_end >= len(sequence):
                 pos_end = i_u
             context_ref  = base
             context_read = aligned_read[i]
@@ -181,6 +181,7 @@ def create_bed(ref_fa_path, bam_path, output_dir, filename):
         for line in bed_lines:
             f.write(line + "\n")
 
+    print(f"\n There are {no_reference} reads don't have reference in mapped reads")
     print(f"\nDetected {found_reads} mapped reads with U/I.")
     print(f"Output saved: {output_json}, {output_bed}")
 
